@@ -250,8 +250,8 @@ func (cmd *Command) writeDML(mw io.Writer, w io.Writer) error {
 				sort.Strings(files)
 
 				for _, wFile := range files {
-					if strings.Contains(wFile, fmt.Sprintf("/%s/", shard)) {
-						fmt.Fprintf(msgOut, "exporting out wal (%s) data for %s...\n", wFile, shard)
+					if strings.Contains(wFile, fmt.Sprintf("/%d/", shard)) {
+						fmt.Fprintf(msgOut, "exporting wal (%s) data for %d...\n", wFile, shard)
 						if err := cmd.writeWALFiles(mw, w, []string{wFile}, key); err != nil {
 							return err
 						}
