@@ -39,7 +39,7 @@ type Command struct {
 	compress        bool
 	lponly          bool
 
-	shards   map[string]struct{}
+	shards   []string
 	manifest map[string]struct{}
 	tsmFiles map[string][]string
 	walFiles map[string][]string
@@ -53,7 +53,7 @@ func NewCommand() *Command {
 		Stderr: os.Stderr,
 		Stdout: os.Stdout,
 
-		shards:   make(map[string]struct{}),
+		shards:   make([]string, 0),
 		manifest: make(map[string]struct{}),
 		tsmFiles: make(map[string][]string),
 		walFiles: make(map[string][]string),
@@ -67,13 +67,14 @@ func (cmd *Command) usingStdOut() bool {
 
 // Run executes the command.
 func (cmd *Command) Run(args ...string) error {
-	var start, end string
+	var start, end, shards string
 	fs := flag.NewFlagSet("export", flag.ExitOnError)
 	fs.StringVar(&cmd.dataDir, "datadir", os.Getenv("HOME")+"/.influxdb/data", "Data storage path")
 	fs.StringVar(&cmd.walDir, "waldir", os.Getenv("HOME")+"/.influxdb/wal", "WAL storage path")
 	fs.StringVar(&cmd.out, "out", os.Getenv("HOME")+"/.influxdb/export", "'-' for standard out or the destination file to export to")
 	fs.StringVar(&cmd.database, "database", "", "Optional: the database to export")
 	fs.StringVar(&cmd.retentionPolicy, "retention", "", "Optional: the retention policy to export (requires -database)")
+	fs.StringVar(&shards, "order", "", "Shard ordering")
 	fs.StringVar(&start, "start", "", "Optional: the start time to export (RFC3339 format)")
 	fs.StringVar(&end, "end", "", "Optional: the end time to export (RFC3339 format)")
 	fs.BoolVar(&cmd.lponly, "lponly", false, "Only export line protocol")
@@ -89,6 +90,8 @@ func (cmd *Command) Run(args ...string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+
+	cmd.shards = strings.Split(shards, ",")
 
 	// set defaults
 	if start != "" {
@@ -160,9 +163,6 @@ func (cmd *Command) walkTSMFiles() error {
 		}
 		if dirs[0] == cmd.database || cmd.database == "" {
 			if dirs[1] == cmd.retentionPolicy || cmd.retentionPolicy == "" {
-				shard := dirs[2]
-				cmd.shards[shard] = struct{}{}
-
 				key := filepath.Join(dirs[0], dirs[1]) // eg. thirdeye/thirdeyeRP
 				cmd.manifest[key] = struct{}{}
 				cmd.tsmFiles[key] = append(cmd.tsmFiles[key], path)
@@ -194,9 +194,6 @@ func (cmd *Command) walkWALFiles() error {
 		}
 		if dirs[0] == cmd.database || cmd.database == "" {
 			if dirs[1] == cmd.retentionPolicy || cmd.retentionPolicy == "" {
-				shard := dirs[2]
-				cmd.shards[shard] = struct{}{}
-
 				key := filepath.Join(dirs[0], dirs[1])
 				cmd.manifest[key] = struct{}{}
 				cmd.walFiles[key] = append(cmd.walFiles[key], path)
@@ -231,24 +228,16 @@ func (cmd *Command) writeDML(mw io.Writer, w io.Writer) error {
 		fmt.Fprintf(mw, "# CONTEXT-DATABASE:%s\n", keys[0])
 		fmt.Fprintf(mw, "# CONTEXT-RETENTION-POLICY:%s\n", keys[1])
 
-		var s []int
-		for k := range cmd.shards {
-			shard, _ := strconv.Atoi(k)
-			s = append(s, shard)
-		}
+		fmt.Fprintf(msgOut, "Shards: %v\n", cmd.shards)
 
-		sort.Ints(s)
-
-		fmt.Fprintf(msgOut, "Shards: %v\n", s)
-
-		for i, shard := range s {
+		for i, shard := range cmd.shards {
 			if _, ok := cmd.tsmFiles[key]; ok {
 				files := cmd.tsmFiles[key]
 				sort.Strings(files)
 
 				for _, tFile := range files {
-					if strings.Contains(tFile, fmt.Sprintf("/%d/", shard)) {
-						fmt.Fprintf(msgOut, "exporting tsm (%s) data for shard %d (%d of %d)...\n", tFile, shard, i+1, len(s))
+					if strings.Contains(tFile, fmt.Sprintf("/%s/", shard)) {
+						fmt.Fprintf(msgOut, "exporting tsm (%s) data for shard %s (%d of %d)...\n", tFile, shard, i+1, len(cmd.shards))
 						if err := cmd.writeTsmFiles(mw, w, []string{tFile}); err != nil {
 							return err
 						}
@@ -261,8 +250,8 @@ func (cmd *Command) writeDML(mw io.Writer, w io.Writer) error {
 				sort.Strings(files)
 
 				for _, wFile := range files {
-					if strings.Contains(wFile, fmt.Sprintf("/%d/", shard)) {
-						fmt.Fprintf(msgOut, "exporting out wal (%s) data for %d...\n", wFile, shard)
+					if strings.Contains(wFile, fmt.Sprintf("/%s/", shard)) {
+						fmt.Fprintf(msgOut, "exporting out wal (%s) data for %s...\n", wFile, shard)
 						if err := cmd.writeWALFiles(mw, w, []string{wFile}, key); err != nil {
 							return err
 						}
