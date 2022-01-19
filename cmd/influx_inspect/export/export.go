@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+   "syscall"
 	"time"
 
 	"github.com/influxdata/influxdb/models"
@@ -293,6 +294,7 @@ func (cmd *Command) write() error {
 	var w io.Writer
 	if cmd.usingStdOut() {
 		w = cmd.Stdout
+      syscall.Syscall(syscall.SYS_FCNTL, os.Stdout.Fd(), syscall.F_SETPIPE_SZ, uintptr(1000000))
 	} else {
 		// open our output file and create an output buffer
 		f, err := os.Create(cmd.out)
