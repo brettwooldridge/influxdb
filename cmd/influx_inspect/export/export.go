@@ -493,8 +493,8 @@ func (cmd *Command) writeValues(w io.Writer, seriesKey []byte, field string, val
          buf = append(buf, models.EscapeStringField(v)...)
          buf = append(buf, '"')
       default:
-         // This shouldn't be possible, but we'll format it anyway.
-         buf = append(buf, fmt.Sprintf("%v", v)...)
+         // This shouldn't be possible
+         return nil
       }
 
       // Now buf has "<series_key> <field>=<value>".
