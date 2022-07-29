@@ -489,8 +489,9 @@ func (cmd *Command) writeValues(w io.Writer, seriesKey []byte, field string, val
       case bool:
          buf = strconv.AppendBool(buf, v)
       case string:
+         ns := strings.Replace(v, "\x00", " ", -1)
          buf = append(buf, '"')
-         buf = append(buf, models.EscapeStringField(v)...)
+         buf = append(buf, models.EscapeStringField(ns)...)
          buf = append(buf, '"')
       default:
          // This shouldn't be possible
