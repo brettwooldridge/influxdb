@@ -299,7 +299,7 @@ func (cmd *Command) write() error {
       syscall.Syscall(syscall.SYS_FCNTL, os.Stdout.Fd(), syscall.F_SETPIPE_SZ, uintptr(1000000))
    } else {
       // open our output file and create an output buffer
-      f, err := os.Create(cmd.out)
+      f, err := os.OpenFile(cmd.out, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
       if err != nil {
          return err
       }
